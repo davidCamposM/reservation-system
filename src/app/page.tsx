@@ -1,25 +1,6 @@
 import Link from "next/link";
-
-const features = ["Servicios y profesionales", "Agenda en tiempo real", "Pagos online seguros"];
+import { services } from "@/lib/demo-data";
 
 export default function HomePage() {
-  return (
-    <section className="space-y-16">
-      <div className="max-w-3xl space-y-6 pt-10">
-        <p className="font-semibold text-teal-700">AGENDA INTELIGENTE PARA SERVICIOS</p>
-        <h1 className="text-5xl font-bold tracking-tight text-slate-900">Tu tiempo. Tus reservas. Todo en orden.</h1>
-        <p className="max-w-2xl text-lg leading-8 text-slate-600">ReservaPro ayuda a negocios de servicios a gestionar su agenda, profesionales y pagos desde un único lugar.</p>
-        <Link href="/reservar" className="inline-flex rounded-lg bg-teal-700 px-5 py-3 font-semibold text-white hover:bg-teal-800">Reservar una hora</Link>
-      </div>
-      <div className="grid gap-5 md:grid-cols-3">
-        {features.map((feature, index) => (
-          <article key={feature} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <span className="text-sm font-bold text-teal-700">0{index + 1}</span>
-            <h2 className="mt-4 text-xl font-semibold">{feature}</h2>
-            <p className="mt-2 text-slate-600">Base preparada para una experiencia de reserva clara y confiable.</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
+  return <section className="space-y-20 pb-10"><div className="grid gap-10 pt-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-center"><div className="max-w-3xl space-y-6"><p className="inline-flex rounded-full bg-teal-50 px-3 py-1 text-sm font-bold text-teal-700">AGENDA INTELIGENTE PARA SERVICIOS</p><h1 className="text-4xl font-bold tracking-tight text-slate-950 sm:text-6xl">Tu tiempo. Tus reservas. Todo en orden.</h1><p className="max-w-2xl text-lg leading-8 text-slate-600">ReservaPro reúne profesionales, servicios, agenda y pagos en una experiencia simple para tus clientes.</p><div className="flex flex-wrap gap-3"><Link href="/reservar" className="rounded-lg bg-teal-700 px-5 py-3 font-semibold text-white shadow-sm hover:bg-teal-800">Reservar una hora</Link><Link href="/catalogo" className="rounded-lg border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-800 hover:border-teal-700 hover:text-teal-700">Ver servicios</Link></div></div><div className="rounded-3xl bg-slate-950 p-6 text-white shadow-xl sm:p-8"><div className="flex items-center justify-between"><p className="font-semibold">Próxima disponibilidad</p><span className="rounded-full bg-teal-400/20 px-3 py-1 text-xs font-bold text-teal-200">En línea</span></div><div className="mt-7 rounded-2xl bg-white p-5 text-slate-900"><p className="text-sm font-semibold text-slate-500">MIÉRCOLES 27</p><p className="mt-2 text-xl font-bold">Sesión personalizada</p><p className="mt-1 text-sm text-slate-600">con Camila Torres · 16:30</p><div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4"><span className="text-sm font-medium">60 minutos</span><span className="font-bold text-teal-700">$35.000</span></div></div></div></div><div className="grid gap-5 md:grid-cols-3">{services.map((service) => <article key={service.id} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><span className={`inline-flex rounded-lg px-3 py-1 text-xs font-bold ${service.color}`}>{service.duration}</span><h2 className="mt-5 text-xl font-bold text-slate-950">{service.name}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{service.description}</p><div className="mt-6 flex items-center justify-between"><span className="font-bold text-slate-950">{service.price}</span><Link href="/reservar" className="text-sm font-bold text-teal-700 hover:underline">Reservar</Link></div></article>)}</div></section>;
 }

@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --background: #f8fafc;
+  --background: #f6f8f8;
   --foreground: #0f172a;
   --brand: #0f766e;
 }
@@ -15,3 +15,5 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+button, input, select { font: inherit; }
