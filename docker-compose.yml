@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: reservapro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: reservapro
+      POSTGRES_USER: reservapro
+      POSTGRES_PASSWORD: reservapro
+    ports:
+      - "5433:5432"
+    volumes:
+      - reservapro_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  reservapro_postgres_data:
