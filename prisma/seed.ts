@@ -1,8 +1,15 @@
 import { PrismaClient } from "@prisma/client";
+import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  await prisma.user.upsert({
+    where: { email: "admin@reservapro.local" },
+    update: {},
+    create: { name: "Administrador ReservaPro", email: "admin@reservapro.local", passwordHash: await hash(process.env.SEED_ADMIN_PASSWORD ?? "Admin123!", 12), role: "ADMIN" },
+  });
+
   const [alex, camila] = await Promise.all([
     prisma.professional.upsert({
       where: { id: "seed-professional-alex" },

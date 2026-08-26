@@ -83,6 +83,7 @@ model WeeklyAvailability {
   professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
 
   @@index([professionalId, weekday])
+  @@unique([professionalId, weekday, startTime, endTime])
 }
 
 model TimeOff {

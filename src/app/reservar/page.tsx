@@ -1,8 +1,29 @@
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { BookingFlow } from "@/components/booking-flow";
 import { SectionHeading } from "@/components/section-heading";
-import { professionals, services } from "@/lib/demo-data";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
-const times = ["09:00", "10:15", "11:30", "14:00", "15:15", "16:30"];
+/** Booking page: loads active catalog data on the server, then lets the client choose a slot. */
+export default async function BookingPage() {
+  const session = await getServerSession(authOptions);
+  if (!session) redirect("/ingresar");
+  if (session.user.role !== "CUSTOMER") redirect("/admin");
 
-export default function BookingPage() {
-  return <section className="space-y-9"><SectionHeading eyebrow="Nueva reserva" title="Reserva tu próxima hora" description="Elige el servicio, profesional y horario que mejor se adapte a ti." /><ol className="grid gap-3 text-sm font-semibold sm:grid-cols-4"><li className="rounded-lg bg-teal-700 px-4 py-3 text-white">1. Servicio</li><li className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-500">2. Profesional</li><li className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-500">3. Horario</li><li className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-500">4. Pago</li></ol><div className="grid gap-6 lg:grid-cols-[1fr_20rem]"><div className="space-y-6"><div className="rounded-2xl border border-slate-200 bg-white p-6"><h2 className="text-lg font-bold">Elige un servicio</h2><div className="mt-4 grid gap-3">{services.map((service, index) => <button key={service.id} className={`flex items-center justify-between rounded-xl border p-4 text-left ${index === 1 ? "border-teal-600 bg-teal-50" : "border-slate-200 hover:border-teal-400"}`}><span><span className="block font-bold text-slate-950">{service.name}</span><span className="mt-1 block text-sm text-slate-600">{service.duration}</span></span><strong className="text-slate-950">{service.price}</strong></button>)}</div></div><div className="rounded-2xl border border-slate-200 bg-white p-6"><h2 className="text-lg font-bold">Profesional</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">{professionals.map((professional) => <button key={professional.id} className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 text-left hover:border-teal-500"><span className={`grid size-10 place-items-center rounded-full text-sm font-bold text-white ${professional.color}`}>{professional.initials}</span><span><span className="block font-bold text-slate-950">{professional.name}</span><span className="text-xs text-slate-500">{professional.role}</span></span></button>)}</div></div><div className="rounded-2xl border border-slate-200 bg-white p-6"><h2 className="text-lg font-bold">Horarios disponibles · miércoles 27</h2><div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">{times.map((time) => <button key={time} className="rounded-lg border border-slate-200 py-2 text-sm font-bold text-slate-700 hover:border-teal-600 hover:bg-teal-50 hover:text-teal-700">{time}</button>)}</div></div></div><aside className="h-fit rounded-2xl bg-slate-950 p-6 text-white"><p className="text-sm font-bold text-teal-300">RESUMEN</p><h2 className="mt-4 text-xl font-bold">Sesión personalizada</h2><dl className="mt-5 space-y-3 border-y border-white/15 py-5 text-sm text-slate-300"><div className="flex justify-between"><dt>Duración</dt><dd className="font-semibold text-white">60 min</dd></div><div className="flex justify-between"><dt>Fecha</dt><dd className="font-semibold text-white">Por seleccionar</dd></div><div className="flex justify-between"><dt>Profesional</dt><dd className="font-semibold text-white">Por seleccionar</dd></div></dl><div className="mt-5 flex justify-between"><span className="font-semibold">Total</span><strong className="text-xl">$35.000</strong></div><button className="mt-6 w-full rounded-lg bg-teal-400 px-4 py-3 font-bold text-slate-950 hover:bg-teal-300">Continuar</button><p className="mt-3 text-xs leading-5 text-slate-400">El pago se solicitará al confirmar la reserva.</p></aside></div></section>;
+  const services = await prisma.service.findMany({
+    where: { active: true },
+    include: { professionals: { where: { professional: { active: true } }, include: { professional: true } } },
+    orderBy: { name: "asc" },
+  });
+
+  // Decimal prices are transformed to numbers because client components accept serializable props only.
+  const bookingServices = services.map((service) => ({ ...service, price: Number(service.price) }));
+
+  return (
+    <section className="space-y-9">
+      <SectionHeading eyebrow="Nueva reserva" title="Reserva tu próxima hora" description="Elige servicio, profesional, fecha y un horario disponible." />
+      <BookingFlow services={bookingServices} />
+    </section>
+  );
 }
