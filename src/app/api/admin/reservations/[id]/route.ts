@@ -2,6 +2,7 @@ import { ReservationStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAdminSession, unauthorized } from "@/lib/authorization";
+import { cancelReservationReminder } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -43,6 +44,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         expiresAt: result.data.status === "PENDING" ? undefined : null,
       },
     });
+
+    // Una reserva anulada no debe conservar un cobro activo ni un recordatorio programado para el cliente.
+    if (result.data.status === "CANCELED") {
+      await Promise.all([
+        prisma.payment.updateMany({
+          where: { reservationId: reservation.id, status: "PENDING" },
+          data: { status: "EXPIRED" },
+        }),
+        cancelReservationReminder(reservation.id),
+      ]);
+    }
 
     return NextResponse.json({ reservation });
   } catch {

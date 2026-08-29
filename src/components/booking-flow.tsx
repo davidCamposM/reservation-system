@@ -18,6 +18,7 @@ type BookingService = {
 
 /** Horario libre calculado por la API de disponibilidad. */
 type Slot = { startsAt: string; endsAt: string; label: string };
+type CreatedReservation = { id: string };
 
 /** Propiedades necesarias para mostrar una etapa del indicador de progreso. */
 type BookingStepProps = { completed: boolean; label: string; number: number };
@@ -73,6 +74,8 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [message, setMessage] = useState("");
   const [booking, setBooking] = useState(false);
+  const [createdReservation, setCreatedReservation] = useState<CreatedReservation | null>(null);
+  const [startingPayment, setStartingPayment] = useState(false);
 
   /**
    * DESCRIPCIÓN: Datos derivados de las selecciones actuales.
@@ -90,7 +93,7 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
    * DESCRIPCIÓN: Estado de avance del flujo de reserva.
    * QUÉ HACE: Determina qué pasos se consideran completos con base en las selecciones actuales.
    * PARA QUÉ SE UTILIZA: El indicador superior se actualiza al elegir servicio, profesional y horario.
-   * NOTA: Pago permanece pendiente porque la integración de Webpay se planificó para una etapa posterior.
+   * NOTA: El pago se completa fuera de esta pantalla, cuando Webpay autoriza la transacción.
    */
   const completedSteps = {
     service: Boolean(selectedService),
@@ -109,6 +112,7 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
     setSelectedSlot(null);
     setSlots([]);
     setMessage("");
+    setCreatedReservation(null);
   }
 
   /**
@@ -125,6 +129,7 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
       setLoadingSlots(true);
       setSelectedSlot(null);
       setMessage("");
+      setCreatedReservation(null);
 
       const params = new URLSearchParams({ serviceId, professionalId, date });
       const response = await fetch(`/api/availability?${params}`, { signal: controller.signal });
@@ -175,7 +180,44 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
       return;
     }
 
-    setMessage("Reserva pendiente creada. El horario queda bloqueado durante 15 minutos.");
+    setCreatedReservation(data.reservation);
+    setMessage("Reserva pendiente creada. El horario queda bloqueado mientras se completa el pago.");
+  }
+
+  /**
+   * DESCRIPCIÓN: Inicio de la redirección segura hacia Webpay Plus.
+   * QUÉ HACE: Solicita a la API un token de pago y crea un formulario POST que Webpay exige para recibirlo.
+   * PARA QUÉ SE UTILIZA: Ninguna clave ni llamada a Transbank se expone al navegador; solo se envía el token temporal devuelto por el servidor.
+   */
+  async function startWebpayPayment() {
+    if (!createdReservation) return;
+
+    setStartingPayment(true);
+    setMessage("");
+    const response = await fetch("/api/payments/webpay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reservationId: createdReservation.id }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      setStartingPayment(false);
+      setMessage(data.message || "No fue posible iniciar el pago.");
+      return;
+    }
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = data.url;
+
+    const tokenInput = document.createElement("input");
+    tokenInput.type = "hidden";
+    tokenInput.name = "token_ws";
+    tokenInput.value = data.token;
+    form.appendChild(tokenInput);
+    document.body.appendChild(form);
+    form.submit();
   }
 
   return (
@@ -185,7 +227,7 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
         <BookingStep completed={completedSteps.service} label="Servicio" number={1} />
         <BookingStep completed={completedSteps.professional} label="Profesional" number={2} />
         <BookingStep completed={completedSteps.schedule} label="Horario" number={3} />
-        <BookingStep completed={false} label="Pago (próximamente)" number={4} />
+        <BookingStep completed={false} label="Pago" number={4} />
       </ol>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
@@ -220,6 +262,7 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
                   onClick={() => {
                     setProfessionalId(professional.id);
                     setSelectedSlot(null);
+                    setCreatedReservation(null);
                     setMessage("");
                   }}
                   className={`rounded-xl border p-4 text-left ${professional.id === professionalId ? "border-teal-600 bg-teal-50" : "border-slate-200 hover:border-teal-400"}`}
@@ -238,7 +281,12 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
                 type="date"
                 min={todayInChile()}
                 value={date}
-                onChange={(event) => setDate(event.target.value)}
+                onChange={(event) => {
+                  setDate(event.target.value);
+                  setSelectedSlot(null);
+                  setCreatedReservation(null);
+                  setMessage("");
+                }}
                 className="mt-3 block rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
               />
             </label>
@@ -254,6 +302,7 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
                   type="button"
                   onClick={() => {
                     setSelectedSlot(slot);
+                    setCreatedReservation(null);
                     setMessage("");
                   }}
                   className={`rounded-lg border py-2 text-sm font-bold ${slot.startsAt === selectedSlot?.startsAt ? "border-teal-700 bg-teal-700 text-white" : "border-slate-200 text-slate-700 hover:border-teal-600 hover:bg-teal-50"}`}
@@ -274,9 +323,10 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
             <div className="flex justify-between"><dt>Hora</dt><dd className="font-semibold text-white">{selectedSlot?.label || "—"}</dd></div>
           </dl>
           <div className="mt-5 flex justify-between"><span className="font-semibold">Total</span><strong className="text-xl">{selectedService ? clp(selectedService.price) : "—"}</strong></div>
-          <button type="button" disabled={!selectedSlot || booking} onClick={createReservation} className="mt-6 w-full rounded-lg bg-teal-400 px-4 py-3 font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-teal-300">{booking ? "Creando reserva..." : "Reservar hora"}</button>
+          <button type="button" disabled={!selectedSlot || booking || Boolean(createdReservation)} onClick={createReservation} className="mt-6 w-full rounded-lg bg-teal-400 px-4 py-3 font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-teal-300">{booking ? "Creando reserva..." : createdReservation ? "Reserva creada" : "Reservar hora"}</button>
+          {createdReservation && <button type="button" disabled={startingPayment} onClick={startWebpayPayment} className="mt-3 w-full rounded-lg bg-white px-4 py-3 font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-200">{startingPayment ? "Redirigiendo a Webpay..." : "Pagar con Webpay"}</button>}
           {message && <p className="mt-3 text-sm leading-5 text-teal-200">{message}</p>}
-          {message.startsWith("Reserva pendiente") && <Link href="/cuenta" className="mt-4 inline-flex text-sm font-bold text-white underline">Ver mis reservas</Link>}
+          {createdReservation && <Link href="/cuenta" className="mt-4 inline-flex text-sm font-bold text-white underline">Ver mis reservas</Link>}
         </aside>
       </div>
     </div>

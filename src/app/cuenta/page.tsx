@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { SectionHeading } from "@/components/section-heading";
+import { PaymentStartButton } from "@/components/payment-start-button";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -18,6 +19,18 @@ const reservationStatusLabels = {
 };
 
 /**
+ * DESCRIPCIÓN: Etiquetas visibles para el estado de cobro de una reserva.
+ * QUÉ HACE: Traduce los valores internos de Payment a textos que el cliente puede comprender.
+ * PARA QUÉ SE UTILIZA: Diferencia una reserva pendiente de la situación concreta de su pago.
+ */
+const paymentStatusLabels = {
+  PENDING: "Pago pendiente",
+  PAID: "Pago aprobado",
+  FAILED: "Pago rechazado",
+  EXPIRED: "Pago expirado",
+};
+
+/**
  * DESCRIPCIÓN: Página privada de reservas del cliente.
  * QUÉ HACE: Obtiene la sesión, consulta únicamente las reservas del cliente autenticado y las muestra en orden de fecha.
  * PARA QUÉ SE UTILIZA: El cliente puede revisar el resultado de una reserva sin acceder al panel administrativo.
@@ -30,12 +43,12 @@ export default async function AccountPage() {
 
   /**
    * DESCRIPCIÓN: Consulta aislada de reservas del cliente.
-   * QUÉ HACE: Filtra por customerId usando el id de la sesión e incluye al profesional para mostrar su nombre.
+   * QUÉ HACE: Filtra por customerId usando el id de la sesión e incluye al profesional y pago para mostrar sus estados.
    * PARA QUÉ SE UTILIZA: Impide que un cliente pueda ver por accidente reservas pertenecientes a otra persona.
    */
   const reservations = await prisma.reservation.findMany({
     where: { customerId: session.user.id },
-    include: { professional: true },
+    include: { professional: true, payment: true },
     orderBy: { startsAt: "asc" },
   });
 
@@ -58,7 +71,12 @@ export default async function AccountPage() {
                       {reservationStatusLabels[reservation.status]}
                     </span>
                     <h2 className="mt-4 text-xl font-bold">{reservation.serviceName}</h2>
-                    <p className="mt-1 text-slate-600">Con {reservation.professional.name}</p>
+                  <p className="mt-1 text-slate-600">Con {reservation.professional.name}</p>
+                  {reservation.payment && (
+                    <p className="mt-3 text-sm font-semibold text-slate-600">
+                      {paymentStatusLabels[reservation.payment.status]}
+                    </p>
+                  )}
                   </div>
                   <p className="text-right text-sm font-semibold text-slate-500">
                     {reservation.startsAt.toLocaleDateString("es-CL", {
@@ -77,6 +95,9 @@ export default async function AccountPage() {
                     </span>
                   </p>
                 </div>
+                {reservation.status === "PENDING" && reservation.expiresAt && reservation.expiresAt > new Date() && reservation.payment?.status !== "PAID" && (
+                  <PaymentStartButton reservationId={reservation.id} />
+                )}
               </article>
             ))
           ) : (
