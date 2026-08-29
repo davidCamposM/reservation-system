@@ -1,0 +1,6 @@
+import Link from "next/link";
+import { SectionHeading } from "@/components/section-heading";
+
+export default function LoginPage() {
+  return <section className="mx-auto max-w-md"><div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"><SectionHeading eyebrow="Acceso" title="Bienvenido de vuelta" description="Ingresa para revisar o gestionar tus reservas." /><form className="mt-7 space-y-4"><label className="block text-sm font-bold text-slate-700">Correo electrónico<input type="email" placeholder="nombre@correo.cl" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></label><label className="block text-sm font-bold text-slate-700">Contraseña<input type="password" placeholder="••••••••" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></label><button type="button" className="w-full rounded-lg bg-slate-950 py-3 font-bold text-white hover:bg-teal-700">Ingresar</button></form><p className="mt-5 text-center text-sm text-slate-600">¿Aún no tienes cuenta? <Link className="font-bold text-teal-700 hover:underline" href="/registro">Crea tu cuenta</Link></p></div></section>;
+}
