@@ -59,7 +59,7 @@ ReservaPro entrega una experiencia de reserva simple para el cliente y una opera
 - Mantiene servicios, precios, duración y profesionales en un único lugar.
 - Controla la disponibilidad semanal y excepciones de agenda.
 - Reduce el riesgo de cruces de horario.
-- Cuenta con una base de datos lista para integrar pagos y notificaciones.
+- Cuenta con un flujo de demostración de Webpay Plus y notificaciones por correo con seguimiento de estado.
 
 ## 6. Flujo principal del producto
 
@@ -93,10 +93,13 @@ La siguiente tabla explica las funcionalidades que ya forman parte del sistema y
 | Conflictos de agenda | Validación en API y restricción adicional en PostgreSQL. | Implementado |
 | Estados | `PENDING`, `CONFIRMED`, `CANCELED` y `COMPLETED`. | Implementado |
 | Zona horaria | Cálculos de agenda con zona horaria `America/Santiago`. | Implementado |
-| Pago | Estructura de datos preparada, sin flujo de pago activo. | Pendiente |
-| Email | Estructura de notificaciones preparada, sin envío activo. | Pendiente |
+| Pago | Webpay Plus en ambiente de integración, con reserva pendiente, retorno y resultado aprobado, rechazado o expirado. | Implementado |
+| Email | Confirmación de pago y recordatorio de 24 horas mediante Resend, con cola persistente y reintentos. | Implementado |
 | WhatsApp | No implementado. | Pendiente |
-| Métricas | El panel muestra métricas básicas; analítica completa está pendiente. | Parcial |
+| Métricas | Dashboard con reservas, estados, pagos aprobados, facturación y filtros por período. | Implementado |
+| Navegación | Controles internos Volver e Inicio con historial seguro y protección de formularios sin guardar. | Implementado |
+| Catálogo público | Servicios activos con profesionales vinculados y jornada disponible real. | Implementado |
+| Landing | Landing responsive con sistema visual, mockup, fotografía local y navegación hacia la demo. | Implementado |
 | Despliegue público | El sistema funciona en localhost. | Pendiente |
 
 ## 8. Reglas de negocio implementadas
@@ -127,28 +130,22 @@ Estas reglas describen el comportamiento que el sistema debe respetar en su esta
 
 ## 10. Alcance fuera del MVP actual
 
-Las siguientes capacidades son deseables, pero no forman parte de la entrega implementada hasta la semana 3:
+Las siguientes capacidades son deseables, pero no forman parte de la entrega actual:
 
-- Cobro real mediante Webpay Plus u otra pasarela de pago.
-- Confirmaciones, recordatorios y cancelaciones automáticas por correo electrónico.
 - Integración con WhatsApp.
 - Panel individual para cada profesional.
 - Reprogramación o cancelación realizada directamente por el cliente.
 - Gestión de sucursales, salas, recursos físicos o varios negocios por cuenta.
 - Cupones, descuentos, paquetes de sesiones o membresías.
 - Calendarios externos como Google Calendar.
-- Reportes avanzados de conversión, ocupación y facturación.
-- Configuración productiva de privacidad, auditoría, monitoreo y recuperación ante incidentes.
+- Reportes avanzados de conversión y ocupación.
+- Reprogramación automática y listas de espera.
+- Configuración productiva específica de privacidad, auditoría, monitoreo y recuperación ante incidentes.
 
 
 ## 11. Próximas etapas del producto
 
-El desarrollo continuará en incrementos pequeños y verificables:
-
-1. **Semana 4: pagos y confirmaciones.** Se creará una integración de pago de demostración, se preparará Webpay Plus en ambiente de integración y se asociará el resultado al estado de la reserva.
-2. **Semana 5: notificaciones.** Se implementará un correo de confirmación y se preparará la estructura para recordatorios.
-3. **Semana 6: métricas y calidad.** Se ampliarán los indicadores de reservas y facturación, se agregarán pruebas y se mejorará la experiencia administrativa.
-4. **Etapa de portafolio: despliegue.** Se publicará una demo segura, se documentarán sus credenciales de prueba y se enlazará desde la landing de portafolio.
+El siguiente incremento corresponde a la publicación controlada de la demo. Se debe configurar PostgreSQL en Railway, variables privadas en Vercel, un dominio verificado para Resend y pruebas de Webpay desde el dominio definitivo. WhatsApp, listas de espera y paneles individuales permanecen fuera del cierre actual.
 
 Este documento debe actualizarse cuando cambie el problema, los usuarios, el alcance, una regla de negocio o una exclusión relevante.
 
@@ -158,13 +155,9 @@ Este documento debe actualizarse cuando cambie el problema, los usuarios, el alc
 
 - [README principal](../README.md): instalación, tecnologías, comandos y resumen público del proyecto.
 - `02-instalacion-local.md`: guía detallada de entorno local y resolución de problemas.
-- `03-arquitectura.md`: estructura técnica y diagramas modelo C4.
-- `04-modelo-de-datos.md`: entidades, relaciones y reglas de persistencia.
-- `05-flujos-de-usuario.md`: recorridos detallados de cliente y administrador.
-- `06-api.md`: contratos de las rutas API.
-- `07-seguridad-y-roles.md`: sesiones, permisos y límites de seguridad.
-- `08-pruebas-manuales.md`: casos para comprobar el MVP.
-- `09-roadmap.md`: planificación de etapas futuras.
+- `03-operacion-y-despliegue.md`: operación del catálogo, notificaciones y publicación en Vercel/Railway.
+
+Los documentos específicos de arquitectura, modelo de datos, API y pruebas manuales todavía no forman parte del repositorio actual.
 
 ---
 

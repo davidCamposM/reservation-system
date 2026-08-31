@@ -2,18 +2,141 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .route-control {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200/80 bg-white/95 px-4 text-sm font-bold text-ink shadow-card backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:border-teal-300 hover:text-brand-deep focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-deep motion-reduce:transform-none motion-reduce:transition-none;
+  }
+  .admin-input { @apply mt-2 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20; }
+  .admin-card { @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-card sm:p-6; }
+}
+
 :root {
-  --background: #f6f8f8;
-  --foreground: #0f172a;
-  --brand: #0f766e;
+  --background: #f5f7f4;
+  --foreground: #0b1220;
+  --brand: #0f8b7a;
+  --brand-deep: #087163;
+  --brand-soft: #dff9f1;
+  --ink-soft: #4c596c;
+  --success: #167c66;
+  --success-soft: #e1f8f1;
+  --warning: #b45c08;
+  --warning-soft: #fff2db;
+  --danger: #c43d4e;
+  --danger-soft: #fff0f2;
 }
 
 * { box-sizing: border-box; }
 
+html { scroll-behavior: smooth; }
+
+/* La ventana no desplaza la cabecera. Solo la segunda fila de app-shell tiene
+   scroll; la primera conserva su altura real incluso con zoom o en móvil. */
+html, body { height: 100%; overflow: hidden; }
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.site-header {
+  position: relative;
+  z-index: 50;
+  min-width: 0;
+  background-color: var(--background);
+}
+
+.site-header-landing { background-color: white; }
+
+.app-content {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  scroll-padding-block: 1rem;
+  isolation: isolate;
+}
+
+.site-header .route-control:hover { transform: none; }
+
+.skip-navigation {
+  position: fixed;
+  top: .5rem;
+  left: .5rem;
+  z-index: 100;
+  transform: translateY(-200%);
+  border-radius: .5rem;
+  background: var(--foreground);
+  padding: .75rem 1rem;
+  color: white;
+}
+
+.skip-navigation:focus { transform: none; }
+
+/* La impresión debe incluir la página completa, no solo la porción visible. */
+@media print {
+  html, body { height: auto; overflow: visible; }
+  .app-shell { display: block; height: auto; overflow: visible; }
+  .app-content { overflow: visible; scrollbar-gutter: auto; }
+  .skip-navigation, [data-route-navigation] { display: none; }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-manrope), Arial, Helvetica, sans-serif;
 }
 
 button, input, select { font: inherit; }
+
+button, a, input, select { -webkit-tap-highlight-color: transparent; }
+
+:focus-visible {
+  outline: 3px solid #5be0c4;
+  outline-offset: 3px;
+}
+
+::selection { background: #bdf4e6; color: #083b35; }
+
+@keyframes landing-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes landing-pulse {
+  0%, 100% { opacity: .55; transform: scale(1); }
+  50% { opacity: .9; transform: scale(1.08); }
+}
+
+@keyframes landing-reveal {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.landing-float { animation: landing-float 6s ease-in-out infinite; }
+.landing-float-delayed { animation: landing-float 7s ease-in-out 1.2s infinite; }
+.landing-pulse { animation: landing-pulse 5s ease-in-out infinite; }
+.landing-reveal { animation: landing-reveal .7s cubic-bezier(.2,.8,.2,1) both; }
+.landing-reveal-delay { animation: landing-reveal .7s .12s cubic-bezier(.2,.8,.2,1) both; }
+.landing-reveal-delay-two { animation: landing-reveal .7s .24s cubic-bezier(.2,.8,.2,1) both; }
+
+@layer components {
+  .ui-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border-radius: 9999px; padding: .75rem 1.125rem; font-size: .875rem; font-weight: 800; transition: transform .22s ease, background-color .22s ease, border-color .22s ease, box-shadow .22s ease, color .22s ease; }
+  .ui-button:hover { transform: translateY(-2px); }
+  .ui-button-primary { background: var(--foreground); color: white; box-shadow: 0 14px 28px -16px rgba(11, 18, 32, .55); }
+  .ui-button-primary:hover { background: var(--brand-deep); }
+  .ui-button-secondary { border: 1px solid #d8dfe0; background: rgba(255,255,255,.86); color: var(--foreground); }
+  .ui-button-secondary:hover { border-color: #8fdccb; color: var(--brand-deep); }
+  .ui-label { display: inline-flex; align-items: center; gap: .45rem; border-radius: 9999px; border: 1px solid #bfece1; background: rgba(255,255,255,.78); padding: .4rem .7rem; font-size: .6875rem; font-weight: 800; letter-spacing: .14em; color: var(--brand-deep); }
+  .ui-card { border: 1px solid #e0e7e6; border-radius: 1.25rem; background: rgba(255,255,255,.92); box-shadow: 0 12px 32px -24px rgba(11, 18, 32, .28); }
+  .ui-icon { display: grid; height: 2.75rem; width: 2.75rem; place-items: center; border-radius: .875rem; background: var(--brand-soft); color: var(--brand-deep); }
+  .ui-status-success { display: inline-flex; align-items: center; gap: .45rem; border-radius: 9999px; background: var(--success-soft); color: var(--success); padding: .4rem .65rem; font-size: .75rem; font-weight: 800; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

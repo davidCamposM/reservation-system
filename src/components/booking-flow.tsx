@@ -23,6 +23,53 @@ type CreatedReservation = { id: string };
 /** Propiedades necesarias para mostrar una etapa del indicador de progreso. */
 type BookingStepProps = { completed: boolean; label: string; number: number };
 
+/** Extrae un mensaje de error solo si la API devolvió un texto seguro para mostrar al cliente. */
+function getApiMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string") {
+    return payload.message;
+  }
+
+  return fallback;
+}
+
+/** Confirma que una respuesta contiene una reserva nueva identificable antes de guardar su estado local. */
+function getCreatedReservation(payload: unknown): CreatedReservation | null {
+  if (
+    payload
+    && typeof payload === "object"
+    && "reservation" in payload
+    && payload.reservation
+    && typeof payload.reservation === "object"
+    && "id" in payload.reservation
+    && typeof payload.reservation.id === "string"
+  ) {
+    return { id: payload.reservation.id };
+  }
+
+  return null;
+}
+
+/** Comprueba URL y token antes de crear el formulario POST requerido por Webpay. */
+function getWebpayStartData(payload: unknown): { url: string; token: string } | null {
+  if (
+    !payload
+    || typeof payload !== "object"
+    || !("url" in payload)
+    || !("token" in payload)
+    || typeof payload.url !== "string"
+    || typeof payload.token !== "string"
+  ) {
+    return null;
+  }
+
+  try {
+    const url = new URL(payload.url);
+    return url.protocol === "https:" && payload.token.length > 0 ? { url: url.toString(), token: payload.token } : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * DESCRIPCIÓN: Obtiene la fecha actual en el horario de Chile.
  * QUÉ HACE: Devuelve una fecha con formato YYYY-MM-DD compatible con el campo HTML de tipo date.
@@ -62,9 +109,9 @@ function BookingStep({ completed, label, number }: BookingStepProps) {
  * QUÉ HACE: Mantiene las selecciones del usuario, consulta horarios libres y envía la reserva a la API.
  * PARA QUÉ SE UTILIZA: Reúne las tres decisiones necesarias —servicio, profesional y horario— en una sola experiencia.
  */
-export function BookingFlow({ services }: { services: BookingService[] }) {
+export function BookingFlow({ services, initialServiceId }: { services: BookingService[]; initialServiceId?: string }) {
   /** Estado de cada decisión que el cliente toma durante el proceso. */
-  const [serviceId, setServiceId] = useState(services[0]?.id ?? "");
+  const [serviceId, setServiceId] = useState(services.find((service) => service.id === initialServiceId)?.id ?? services[0]?.id ?? "");
   const [professionalId, setProfessionalId] = useState("");
   const [date, setDate] = useState(todayInChile());
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -121,7 +168,11 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
    * PARA QUÉ SE UTILIZA: Los botones de horas siempre representan la disponibilidad más reciente del profesional elegido.
    */
   useEffect(() => {
-    if (!serviceId || !professionalId || !date) return;
+    if (!serviceId || !professionalId || !date) {
+      setSlots([]);
+      setLoadingSlots(false);
+      return;
+    }
 
     const controller = new AbortController();
 
@@ -132,22 +183,30 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
       setCreatedReservation(null);
 
       const params = new URLSearchParams({ serviceId, professionalId, date });
-      const response = await fetch(`/api/availability?${params}`, { signal: controller.signal });
+      try {
+        const response = await fetch(`/api/availability?${params}`, { signal: controller.signal });
+        const data = await response.json().catch(() => null);
 
-      if (!response.ok) {
-        setSlots([]);
-        setLoadingSlots(false);
-        return;
+        if (!response.ok || !data || typeof data !== "object" || !("slots" in data) || !Array.isArray(data.slots)) {
+          if (!controller.signal.aborted) {
+            setSlots([]);
+            setMessage(getApiMessage(data, "No fue posible consultar los horarios disponibles."));
+          }
+          return;
+        }
+
+        if (!controller.signal.aborted) setSlots(data.slots as Slot[]);
+      } catch {
+        if (!controller.signal.aborted) {
+          setSlots([]);
+          setMessage("No fue posible consultar los horarios disponibles. Intenta nuevamente.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoadingSlots(false);
       }
-
-      const data = await response.json();
-      setSlots(data.slots);
-      setLoadingSlots(false);
     }
 
-    loadSlots().catch(() => {
-      if (!controller.signal.aborted) setLoadingSlots(false);
-    });
+    void loadSlots();
 
     return () => controller.abort();
   }, [serviceId, professionalId, date]);
@@ -163,25 +222,36 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
     setBooking(true);
     setMessage("");
 
-    const response = await fetch("/api/reservations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        serviceId: selectedService.id,
-        professionalId: selectedProfessional.id,
-        startsAt: selectedSlot.startsAt,
-      }),
-    });
-    const data = await response.json();
-    setBooking(false);
+    try {
+      const response = await fetch("/api/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceId: selectedService.id,
+          professionalId: selectedProfessional.id,
+          startsAt: selectedSlot.startsAt,
+        }),
+      });
+      const data = await response.json().catch(() => null);
 
-    if (!response.ok) {
-      setMessage(data.message);
-      return;
+      if (!response.ok) {
+        setMessage(getApiMessage(data, "No fue posible crear la reserva. Intenta nuevamente."));
+        return;
+      }
+
+      const reservation = getCreatedReservation(data);
+      if (!reservation) {
+        setMessage("La reserva fue creada, pero no fue posible preparar el pago. Revísala desde tu cuenta.");
+        return;
+      }
+
+      setCreatedReservation(reservation);
+      setMessage("Reserva pendiente creada. El horario queda bloqueado mientras se completa el pago.");
+    } catch {
+      setMessage("No fue posible conectarse con el servidor. Revisa tu conexión e intenta nuevamente.");
+    } finally {
+      setBooking(false);
     }
-
-    setCreatedReservation(data.reservation);
-    setMessage("Reserva pendiente creada. El horario queda bloqueado mientras se completa el pago.");
   }
 
   /**
@@ -194,30 +264,37 @@ export function BookingFlow({ services }: { services: BookingService[] }) {
 
     setStartingPayment(true);
     setMessage("");
-    const response = await fetch("/api/payments/webpay", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reservationId: createdReservation.id }),
-    });
-    const data = await response.json();
+    try {
+      const response = await fetch("/api/payments/webpay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reservationId: createdReservation.id }),
+      });
+      const data = await response.json().catch(() => null);
 
-    if (!response.ok) {
+      const webpayStart = getWebpayStartData(data);
+      if (!response.ok || !webpayStart) {
+        setMessage(getApiMessage(data, "No fue posible iniciar el pago. Intenta nuevamente."));
+        return;
+      }
+
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = webpayStart.url;
+
+      const tokenInput = document.createElement("input");
+      tokenInput.type = "hidden";
+      tokenInput.name = "token_ws";
+      tokenInput.value = webpayStart.token;
+      form.appendChild(tokenInput);
+      document.body.appendChild(form);
+      form.submit();
+    } catch {
+      setMessage("No fue posible conectarse con Webpay. Intenta nuevamente.");
+    } finally {
+      // Si el formulario redirige correctamente, el navegador abandona esta página antes de que este estado sea visible.
       setStartingPayment(false);
-      setMessage(data.message || "No fue posible iniciar el pago.");
-      return;
     }
-
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = data.url;
-
-    const tokenInput = document.createElement("input");
-    tokenInput.type = "hidden";
-    tokenInput.name = "token_ws";
-    tokenInput.value = data.token;
-    form.appendChild(tokenInput);
-    document.body.appendChild(form);
-    form.submit();
   }
 
   return (

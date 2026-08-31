@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum UserRole {
@@ -24,6 +25,16 @@ enum PaymentStatus {
   PAID
   FAILED
   EXPIRED
+}
+
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  SCHEDULED
+  SENT
+  FAILED
+  CANCELED
+  SKIPPED
 }
 
 model User {
@@ -146,8 +157,17 @@ model NotificationLog {
   sentAt        DateTime?
   scheduledFor  DateTime?
   providerId    String?
+  status        NotificationStatus @default(PENDING)
+  attempts      Int                @default(0)
+  nextAttemptAt DateTime?          @default(now())
+  leaseUntil    DateTime?
+  uncertainSince DateTime?
+  lastError     String?
+  cancelRequested Boolean         @default(false)
+  payload       Json?
   createdAt     DateTime    @default(now())
   reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
 
   @@unique([reservationId, type])
+  @@index([status, nextAttemptAt])
 }

@@ -7,6 +7,36 @@ type PaymentStartButtonProps = {
   reservationId: string;
 };
 
+/** Verifica que la API devuelva los únicos dos valores necesarios para redirigir a Webpay de forma segura. */
+function getWebpayStartData(payload: unknown): { url: string; token: string } | null {
+  if (
+    !payload
+    || typeof payload !== "object"
+    || !("url" in payload)
+    || !("token" in payload)
+    || typeof payload.url !== "string"
+    || typeof payload.token !== "string"
+  ) {
+    return null;
+  }
+
+  try {
+    const url = new URL(payload.url);
+    return url.protocol === "https:" && payload.token.length > 0 ? { url: url.toString(), token: payload.token } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Lee un texto de error opcional evitando mostrar valores no serializables de una respuesta inesperada. */
+function getApiMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string") {
+    return payload.message;
+  }
+
+  return fallback;
+}
+
 /**
  * DESCRIPCIÓN: Botón cliente para iniciar Webpay desde una reserva existente.
  * QUÉ HACE: Pide un token de pago a la API y envía ese token a la URL segura entregada por Webpay.
@@ -33,22 +63,23 @@ export function PaymentStartButton({ reservationId }: PaymentStartButtonProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reservationId }),
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
 
-      if (!response.ok) {
-        setMessage(data.message || "No fue posible iniciar el pago.");
+      const webpayStart = getWebpayStartData(data);
+      if (!response.ok || !webpayStart) {
+        setMessage(getApiMessage(data, "No fue posible iniciar el pago."));
         setStartingPayment(false);
         return;
       }
 
       const form = document.createElement("form");
       form.method = "POST";
-      form.action = data.url;
+      form.action = webpayStart.url;
 
       const tokenInput = document.createElement("input");
       tokenInput.type = "hidden";
       tokenInput.name = "token_ws";
-      tokenInput.value = data.token;
+      tokenInput.value = webpayStart.token;
       form.appendChild(tokenInput);
       document.body.appendChild(form);
       form.submit();
@@ -60,6 +91,7 @@ export function PaymentStartButton({ reservationId }: PaymentStartButtonProps) {
 
   return (
     <div className="mt-4">
+      <p className="mb-2 text-xs text-slate-600">Webpay de integración · solo tarjetas de prueba.</p>
       <button
         type="button"
         disabled={startingPayment}

@@ -2,6 +2,8 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http";
+import { paymentsEnabled } from "@/lib/environment";
 import { prisma } from "@/lib/prisma";
 import { createBuyOrder, getWebpayReturnUrl, getWebpayTransaction, type WebpayStartResponse } from "@/lib/webpay";
 
@@ -24,74 +26,74 @@ async function expirePendingPayments() {
  * PARA QUÉ SE UTILIZA: El cliente recibe una URL y token para ser redirigido mediante POST hacia la página segura de Webpay.
  */
 export async function POST(request: Request) {
+  if (!paymentsEnabled()) return NextResponse.json({ message: "Los pagos están deshabilitados en este entorno de vista previa." }, { status: 503 });
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ message: "Debes iniciar sesión para pagar." }, { status: 401 });
   if (session.user.role !== "CUSTOMER") return NextResponse.json({ message: "Las cuentas administrativas no pueden iniciar pagos." }, { status: 403 });
 
-  const parsed = paymentStartSchema.safeParse(await request.json());
+  const parsed = paymentStartSchema.safeParse(await readJsonBody(request));
   if (!parsed.success) return NextResponse.json({ message: "La reserva indicada no es válida." }, { status: 400 });
 
-  await expirePendingPayments();
-
-  const reservation = await prisma.reservation.findFirst({
-    where: { id: parsed.data.reservationId, customerId: session.user.id },
-    include: { payment: true },
-  });
-  if (!reservation) return NextResponse.json({ message: "Reserva no encontrada." }, { status: 404 });
-
-  // Un pago aprobado no puede iniciarse por segunda vez para la misma reserva.
-  if (reservation.payment?.status === "PAID") {
-    return NextResponse.json({ message: "Esta reserva ya tiene un pago aprobado." }, { status: 409 });
-  }
-
-  // La reserva solo puede pagarse mientras continúa pendiente y dentro de su periodo temporal de bloqueo.
-  if (reservation.status !== "PENDING" || !reservation.expiresAt || reservation.expiresAt <= new Date()) {
-    await prisma.reservation.updateMany({
-      where: { id: reservation.id, status: "PENDING" },
-      data: { status: "CANCELED" },
-    });
-    return NextResponse.json({ message: "La reserva expiró antes de iniciar el pago. Selecciona otro horario." }, { status: 409 });
-  }
-
-  // Si el cliente ya inició Webpay y aún no expira, se reutiliza el mismo enlace en lugar de crear otra transacción.
-  if (
-    reservation.payment?.status === "PENDING"
-    && reservation.payment.expiresAt
-    && reservation.payment.expiresAt > new Date()
-    && reservation.payment.token
-    && reservation.payment.gatewayUrl
-  ) {
-    return NextResponse.json({
-      url: reservation.payment.gatewayUrl,
-      token: reservation.payment.token,
-      paymentId: reservation.payment.id,
-    });
-  }
-
-  const buyOrder = createBuyOrder();
-  const payment = await prisma.payment.upsert({
-    where: { reservationId: reservation.id },
-    create: {
-      reservationId: reservation.id,
-      provider: "WEBPAY_PLUS",
-      buyOrder,
-      amount: reservation.price,
-      status: "PENDING",
-      expiresAt: reservation.expiresAt,
-    },
-    update: {
-      provider: "WEBPAY_PLUS",
-      buyOrder,
-      token: null,
-      gatewayUrl: null,
-      authorizationId: null,
-      paidAt: null,
-      status: "PENDING",
-      expiresAt: reservation.expiresAt,
-    },
-  });
-
   try {
+    await expirePendingPayments();
+
+    const reservation = await prisma.reservation.findFirst({
+      where: { id: parsed.data.reservationId, customerId: session.user.id },
+      include: { payment: true },
+    });
+    if (!reservation) return NextResponse.json({ message: "Reserva no encontrada." }, { status: 404 });
+
+    // Un pago aprobado no puede iniciarse por segunda vez para la misma reserva.
+    if (reservation.payment?.status === "PAID") {
+      return NextResponse.json({ message: "Esta reserva ya tiene un pago aprobado." }, { status: 409 });
+    }
+
+    // La reserva solo puede pagarse mientras continúa pendiente y dentro de su periodo temporal de bloqueo.
+    if (reservation.status !== "PENDING" || !reservation.expiresAt || reservation.expiresAt <= new Date()) {
+      await prisma.reservation.updateMany({
+        where: { id: reservation.id, status: "PENDING" },
+        data: { status: "CANCELED" },
+      });
+      return NextResponse.json({ message: "La reserva expiró antes de iniciar el pago. Selecciona otro horario." }, { status: 409 });
+    }
+
+    // Si el cliente ya inició Webpay y aún no expira, se reutiliza el mismo enlace en lugar de crear otra transacción.
+    if (
+      reservation.payment?.status === "PENDING"
+      && reservation.payment.expiresAt
+      && reservation.payment.expiresAt > new Date()
+      && reservation.payment.token
+      && reservation.payment.gatewayUrl
+    ) {
+      return NextResponse.json({
+        url: reservation.payment.gatewayUrl,
+        token: reservation.payment.token,
+        paymentId: reservation.payment.id,
+      });
+    }
+
+    const payment = await prisma.payment.upsert({
+      where: { reservationId: reservation.id },
+      create: {
+        reservationId: reservation.id,
+        provider: "WEBPAY_PLUS",
+        buyOrder: createBuyOrder(),
+        amount: reservation.price,
+        status: "PENDING",
+        expiresAt: reservation.expiresAt,
+      },
+      update: {
+        provider: "WEBPAY_PLUS",
+        buyOrder: createBuyOrder(),
+        token: null,
+        gatewayUrl: null,
+        authorizationId: null,
+        paidAt: null,
+        status: "PENDING",
+        expiresAt: reservation.expiresAt,
+      },
+    });
+
     const response = await getWebpayTransaction().create(
       payment.buyOrder,
       session.user.id,
@@ -108,7 +110,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url: response.url, token: response.token, paymentId: payment.id });
   } catch {
-    await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });
+    // El error puede venir de PostgreSQL, de la configuración de Webpay o de Transbank; se entrega un mensaje seguro al cliente.
     return NextResponse.json({ message: "No fue posible iniciar Webpay. Intenta nuevamente." }, { status: 502 });
   }
 }

@@ -42,6 +42,7 @@ export default async function PaymentResultPage({ searchParams }: { searchParams
   return (
     <section className="max-w-2xl space-y-6">
       <SectionHeading eyebrow="Pago Webpay" title={message.title} description={message.description} />
+      <p className="text-sm text-slate-600">Pago de demostración en ambiente de integración. No corresponde a un cobro real.</p>
       <article className={`rounded-2xl p-6 ${message.background} ${message.color}`}>
         <p className="font-bold">{payment.reservation.serviceName}</p>
         <p className="mt-2">Profesional: {payment.reservation.professional.name}</p>

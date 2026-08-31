@@ -10,7 +10,8 @@ import { prisma } from "@/lib/prisma";
  * QUÉ HACE: Verifica el rol, consulta los datos necesarios y los entrega al componente interactivo.
  * PARA QUÉ SE UTILIZA: Centraliza la operación diaria de la agenda sin exponerla a clientes.
  */
-export default async function AdminSchedulePage() {
+export default async function AdminSchedulePage({ searchParams }: { searchParams: Promise<{ professional?: string }> }) {
+  const { professional: initialProfessionalId } = await searchParams;
   const session = await getServerSession(authOptions);
 
   // Las mismas reglas que en /admin protegen esta subpágina de la agenda.
@@ -50,6 +51,7 @@ export default async function AdminSchedulePage() {
 
       {/** Convierte fechas de Prisma a texto ISO para enviarlas de forma segura al componente cliente. */}
       <ScheduleManager
+        initialProfessionalId={initialProfessionalId}
         initialProfessionals={professionals.map((professional) => ({
           // Solo se entregan las propiedades que la interfaz necesita. Así no se filtran datos innecesarios.
           id: professional.id,

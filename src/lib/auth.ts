@@ -25,6 +25,12 @@ const credentialsSchema = z.object({
  * PARA QUÉ SE UTILIZA: Una única fuente de verdad para autenticar y autorizar usuarios.
  */
 export const authOptions: NextAuthOptions = {
+  // Las pruebas locales usan cookies separadas y no reemplazan la sesión habitual del desarrollador.
+  ...(process.env.TEST_DATABASE_NAME?.startsWith("reservapro_test_") ? { cookies: {
+    sessionToken: { name: "reservapro-test.session-token", options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: false } },
+    csrfToken: { name: "reservapro-test.csrf-token", options: { httpOnly: true, sameSite: "lax" as const, path: "/", secure: false } },
+    callbackUrl: { name: "reservapro-test.callback-url", options: { sameSite: "lax" as const, path: "/", secure: false } },
+  } } : {}),
   // JWT guarda los datos de sesión en una cookie firmada, sin requerir una tabla adicional de sesiones.
   session: { strategy: "jwt" },
 
@@ -53,16 +59,21 @@ export const authOptions: NextAuthOptions = {
         const result = credentialsSchema.safeParse(credentials);
         if (!result.success) return null;
 
-        // El correo se normaliza a minúsculas para evitar cuentas duplicadas por diferencias de mayúsculas.
-        const email = result.data.email.toLowerCase();
-        const user = await prisma.user.findUnique({ where: { email } });
+        try {
+          // El correo se normaliza a minúsculas para evitar cuentas duplicadas por diferencias de mayúsculas.
+          const email = result.data.email.toLowerCase();
+          const user = await prisma.user.findUnique({ where: { email } });
 
-        // passwordHash es la contraseña cifrada almacenada en PostgreSQL; nunca se devuelve al navegador.
-        const hasValidPassword = user && await compare(result.data.password, user.passwordHash);
-        if (!hasValidPassword || !user) return null;
+          // passwordHash es la contraseña cifrada almacenada en PostgreSQL; nunca se devuelve al navegador.
+          const hasValidPassword = user && await compare(result.data.password, user.passwordHash);
+          if (!hasValidPassword || !user) return null;
 
-        // Solo se entregan a NextAuth los datos necesarios para identificar y autorizar al usuario.
-        return { id: user.id, name: user.name, email: user.email, role: user.role };
+          // Solo se entregan a NextAuth los datos necesarios para identificar y autorizar al usuario.
+          return { id: user.id, name: user.name, email: user.email, role: user.role };
+        } catch {
+          // Una caída temporal de base de datos no expone detalles de infraestructura en la pantalla de acceso.
+          return null;
+        }
       },
     }),
   ],

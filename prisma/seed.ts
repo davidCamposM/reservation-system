@@ -4,11 +4,21 @@ import { hash } from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  const email = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.SEED_ADMIN_PASSWORD;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password || password.length < 12 || password === "Admin123!") {
+    throw new Error("El seed requiere SEED_ADMIN_EMAIL y una contraseña privada de al menos 12 caracteres.");
+  }
+  // El seed no eleva a administrador una cuenta de cliente preexistente ni cambia contraseñas existentes.
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing && existing.role !== "ADMIN") throw new Error("El correo elegido ya pertenece a una cuenta de cliente.");
   await prisma.user.upsert({
-    where: { email: "admin@reservapro.local" },
+    where: { email },
     update: {},
-    create: { name: "Administrador ReservaPro", email: "admin@reservapro.local", passwordHash: await hash(process.env.SEED_ADMIN_PASSWORD ?? "Admin123!", 12), role: "ADMIN" },
+    create: { name: "Administrador ReservaPro", email, passwordHash: await hash(password, 12), role: "ADMIN" },
   });
+
+  if (process.env.SEED_DEMO_DATA !== "true") return;
 
   const [alex, camila] = await Promise.all([
     prisma.professional.upsert({
