@@ -10,6 +10,15 @@ export type WebpayStartResponse = {
   url: string;
 };
 
+/** Respuesta relevante de Webpay Plus después de confirmar un token. */
+export type WebpayCommitResponse = {
+  status?: string;
+  response_code?: number | string;
+  amount?: number | string;
+  buy_order?: string;
+  authorization_code?: string;
+};
+
 /**
  * DESCRIPCIÓN: Cliente Webpay Plus configurado para integración.
  * QUÉ HACE: Usa las credenciales configuradas en variables de entorno o, si no existen, las credenciales públicas del ambiente de integración del SDK oficial.
@@ -40,6 +49,22 @@ export function createBuyOrder() {
  */
 export function isWebpayApproved(response: { status?: string; responseCode?: number | string }) {
   return response.status === "AUTHORIZED" && Number(response.responseCode) === 0;
+}
+
+/**
+ * DESCRIPCIÓN: Verificación completa de una respuesta de confirmación Webpay.
+ * QUÉ HACE: Comprueba autorización, orden de compra y monto antes de permitir confirmar una reserva.
+ * PARA QUÉ SE UTILIZA: Una respuesta autorizada con una orden o un monto distinto no puede acreditarse al pago local.
+ */
+export function evaluateWebpayCommit(response: WebpayCommitResponse, expected: { buyOrder: string; amount: number }) {
+  const approved = isWebpayApproved({ status: response.status, responseCode: response.response_code })
+    && response.buy_order === expected.buyOrder
+    && Number(response.amount) === expected.amount;
+
+  return {
+    approved,
+    authorizationId: response.authorization_code || null,
+  };
 }
 
 /**

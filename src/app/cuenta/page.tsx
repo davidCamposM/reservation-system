@@ -41,6 +41,9 @@ export default async function AccountPage() {
   // Un visitante sin sesión debe ingresar antes de consultar información privada.
   if (!session) redirect("/ingresar");
 
+  // El panel administrativo tiene una vista propia; así no se mezcla la experiencia de cliente con sus permisos de gestión.
+  if (session.user.role !== "CUSTOMER") redirect("/admin");
+
   /**
    * DESCRIPCIÓN: Consulta aislada de reservas del cliente.
    * QUÉ HACE: Filtra por customerId usando el id de la sesión e incluye al profesional y pago para mostrar sus estados.

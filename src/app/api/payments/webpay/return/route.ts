@@ -1,22 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { paymentsEnabled } from "@/lib/environment";
 import { scheduleReservationReminder, sendPaymentResultEmail } from "@/lib/notifications";
-import { getWebpayTransaction, isWebpayApproved } from "@/lib/webpay";
+import { evaluateWebpayCommit, getWebpayTransaction, type WebpayCommitResponse } from "@/lib/webpay";
 
 export const runtime = "nodejs";
-
-/**
- * DESCRIPCIÓN: Respuesta relevante que entrega el SDK de Transbank al confirmar una transacción.
- * QUÉ HACE: Declara los nombres con guion bajo que Webpay utiliza realmente en su respuesta REST.
- * PARA QUÉ SE UTILIZA: Evita interpretar un pago autorizado como rechazado por usar nombres de propiedades distintos.
- */
-type WebpayCommitResponse = {
-  status?: string;
-  response_code?: number | string;
-  amount?: number | string;
-  buy_order?: string;
-  authorization_code?: string;
-};
 
 /** Construye una redirección segura hacia la pantalla interna de resultado de pago. */
 function paymentResultRedirect(request: Request, paymentId?: string, status?: string) {
@@ -64,6 +52,7 @@ async function getReservationForNotifications(reservationId: string) {
  * PARA QUÉ SE UTILIZA: El navegador nunca confirma un pago por sí mismo; el estado final proviene del commit seguro de Webpay.
  */
 async function processWebpayReturn(request: Request) {
+  if (!paymentsEnabled()) return paymentResultRedirect(request, undefined, "disabled");
   const { token, abortedToken } = await getWebpayReturnData(request);
 
   // Webpay envía TBK_TOKEN cuando el cliente abandona, vence o cancela desde su pantalla.
@@ -108,32 +97,48 @@ async function processWebpayReturn(request: Request) {
     return paymentResultRedirect(request, payment.id, "expired");
   }
 
+  let paymentResult;
+
   try {
     const response = await getWebpayTransaction().commit(token) as WebpayCommitResponse;
 
-    // El SDK conserva los nombres oficiales de la API de Transbank: response_code, buy_order y authorization_code.
-    const hasMatchingOrder = response.buy_order === payment.buyOrder;
-    const hasMatchingAmount = Number(response.amount) === Number(payment.amount);
-    const approved = isWebpayApproved({ status: response.status, responseCode: response.response_code })
-      && hasMatchingOrder
-      && hasMatchingAmount;
+    // Esta regla verifica los nombres oficiales de Transbank: response_code, buy_order y authorization_code.
+    paymentResult = evaluateWebpayCommit(response, {
+      buyOrder: payment.buyOrder,
+      amount: Number(payment.amount),
+    });
+  } catch {
+    /**
+     * DESCRIPCIÓN: Error temporal al consultar el resultado de Transbank.
+     * QUÉ HACE: Conserva el pago como pendiente en vez de marcarlo como fallido sin una respuesta oficial.
+     * PARA QUÉ SE UTILIZA: Una interrupción de red después de autorizar una tarjeta no puede invalidar por error un pago real.
+     */
+    return paymentResultRedirect(request, payment.id, "pending");
+  }
 
-    if (!approved) {
+  if (!paymentResult.approved) {
+    try {
       await prisma.payment.update({
         where: { id: payment.id },
-        data: { status: "FAILED", authorizationId: response.authorization_code || null },
+        data: { status: "FAILED", authorizationId: paymentResult.authorizationId },
       });
-      const reservation = await getReservationForNotifications(payment.reservationId);
-      if (reservation) await sendPaymentResultEmail(reservation, false);
-      return paymentResultRedirect(request, payment.id, "rejected");
+    } catch {
+      return paymentResultRedirect(request, payment.id, "error");
     }
 
+    const reservation = await getReservationForNotifications(payment.reservationId);
+    // Un correo no puede transformar un rechazo confirmado en un error de proceso.
+    if (reservation) await Promise.allSettled([sendPaymentResultEmail(reservation, false)]);
+    return paymentResultRedirect(request, payment.id, "rejected");
+  }
+
+  try {
     await prisma.$transaction([
       prisma.payment.update({
         where: { id: payment.id },
         data: {
           status: "PAID",
-          authorizationId: response.authorization_code || null,
+          authorizationId: paymentResult.authorizationId,
           paidAt: new Date(),
           expiresAt: null,
         },
@@ -143,22 +148,25 @@ async function processWebpayReturn(request: Request) {
         data: { status: "CONFIRMED", expiresAt: null },
       }),
     ]);
-
-    const reservation = await getReservationForNotifications(payment.reservationId);
-    if (reservation) {
-      await sendPaymentResultEmail(reservation, true);
-      await scheduleReservationReminder(reservation);
-    }
-    return paymentResultRedirect(request, payment.id, "approved");
   } catch {
-    await prisma.payment.updateMany({
-      where: { id: payment.id, status: "PENDING" },
-      data: { status: "FAILED" },
-    });
-    const reservation = await getReservationForNotifications(payment.reservationId);
-    if (reservation) await sendPaymentResultEmail(reservation, false);
-    return paymentResultRedirect(request, payment.id, "error");
+    // Si la persistencia falla, no se inventa un rechazo: el próximo retorno puede reintentar la confirmación oficial.
+    return paymentResultRedirect(request, payment.id, "pending");
   }
+
+  const reservation = await getReservationForNotifications(payment.reservationId);
+  if (reservation) {
+    /**
+     * DESCRIPCIÓN: Notificaciones posteriores a un cobro confirmado.
+     * QUÉ HACE: Ejecuta correo y recordatorio sin dejar que uno de ellos cambie el resultado ya guardado del pago.
+     * PARA QUÉ SE UTILIZA: El estado comercial depende de Webpay y PostgreSQL, no de la disponibilidad de Resend.
+     */
+    await Promise.allSettled([
+      sendPaymentResultEmail(reservation, true),
+      scheduleReservationReminder(reservation),
+    ]);
+  }
+
+  return paymentResultRedirect(request, payment.id, "approved");
 }
 
 /**
@@ -167,7 +175,11 @@ async function processWebpayReturn(request: Request) {
  * PARA QUÉ SE UTILIZA: Mantiene una sola fuente de verdad para actualizar Payment y Reservation.
  */
 export async function POST(request: Request) {
-  return processWebpayReturn(request);
+  try {
+    return await processWebpayReturn(request);
+  } catch {
+    return paymentResultRedirect(request, undefined, "error");
+  }
 }
 
 /**
@@ -176,5 +188,9 @@ export async function POST(request: Request) {
  * PARA QUÉ SE UTILIZA: Evita descartar un pago válido por depender exclusivamente del método POST esperado.
  */
 export async function GET(request: Request) {
-  return processWebpayReturn(request);
+  try {
+    return await processWebpayReturn(request);
+  } catch {
+    return paymentResultRedirect(request, undefined, "error");
+  }
 }

@@ -8,15 +8,17 @@
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
+import { safeCallbackUrl } from "@/lib/auth-navigation";
 
 /**
  * DESCRIPCIÓN: Formulario de acceso para una cuenta existente.
  * QUÉ HACE: Envía correo y contraseña al proveedor credentials de NextAuth.
  * PARA QUÉ SE UTILIZA: Crea una sesión y lleva al cliente a /cuenta cuando sus credenciales son correctas.
  */
-export function LoginForm() {
+export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
   // Este mensaje se muestra solo si NextAuth rechaza las credenciales.
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
   /**
    * DESCRIPCIÓN: Acción ejecutada al enviar el formulario.
@@ -26,21 +28,28 @@ export function LoginForm() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    setLoading(true);
 
-    const form = new FormData(event.currentTarget);
-    const result = await signIn("credentials", {
-      email: form.get("email"),
-      password: form.get("password"),
-      redirect: false,
-    });
+    try {
+      const form = new FormData(event.currentTarget);
+      const result = await signIn("credentials", {
+        email: form.get("email"),
+        password: form.get("password"),
+        redirect: false,
+      });
 
-    if (result?.error) {
-      setMessage("Correo o contraseña incorrectos.");
-      return;
+      if (result?.error || !result?.ok) {
+        setMessage("Correo o contraseña incorrectos.");
+        return;
+      }
+
+      // Después de crear la sesión, el cliente puede acceder a sus reservas.
+      window.location.assign(safeCallbackUrl(callbackUrl));
+    } catch {
+      setMessage("No fue posible iniciar sesión. Intenta nuevamente.");
+    } finally {
+      setLoading(false);
     }
-
-    // Después de crear la sesión, el cliente puede acceder a sus reservas.
-    window.location.assign("/cuenta");
   }
 
   return (
@@ -53,8 +62,8 @@ export function LoginForm() {
         Contraseña
         <input required name="password" type="password" minLength={8} placeholder="••••••••" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
       </label>
-      {message ? <p className="text-sm font-semibold text-red-700">{message}</p> : null}
-      <button className="w-full rounded-lg bg-slate-950 py-3 font-bold text-white hover:bg-teal-700">Ingresar</button>
+      {message ? <p role="alert" className="text-sm font-semibold text-red-700">{message}</p> : null}
+      <button disabled={loading} className="w-full rounded-lg bg-slate-950 py-3 font-bold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Ingresando..." : "Ingresar"}</button>
     </form>
   );
 }
@@ -64,7 +73,7 @@ export function LoginForm() {
  * QUÉ HACE: Envía los datos a /api/register y, si se crea la cuenta, inicia sesión automáticamente.
  * PARA QUÉ SE UTILIZA: El visitante no necesita volver a ingresar sus credenciales después de registrarse.
  */
-export function RegistrationForm() {
+export function RegistrationForm({ callbackUrl }: { callbackUrl?: string }) {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -78,33 +87,40 @@ export function RegistrationForm() {
     setLoading(true);
     setMessage("");
 
-    const form = new FormData(event.currentTarget);
-    const body = Object.fromEntries(form.entries());
-    const response = await fetch("/api/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    try {
+      const form = new FormData(event.currentTarget);
+      const body = Object.fromEntries(form.entries());
+      const response = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => null);
 
-    if (!response.ok) {
-      setMessage((await response.json()).message);
+      if (!response.ok) {
+        const errorMessage = payload && typeof payload === "object" && "message" in payload ? payload.message : null;
+        setMessage(typeof errorMessage === "string" ? errorMessage : "No fue posible crear la cuenta.");
+        return;
+      }
+
+      const result = await signIn("credentials", {
+        email: String(body.email ?? ""),
+        password: String(body.password ?? ""),
+        redirect: false,
+      });
+
+      // En un error inesperado de sesión, la cuenta ya existe y se puede usar desde la pantalla de acceso.
+      if (result?.error || !result?.ok) {
+        window.location.assign(`/ingresar?callbackUrl=${encodeURIComponent(safeCallbackUrl(callbackUrl))}`);
+        return;
+      }
+
+      window.location.assign(safeCallbackUrl(callbackUrl));
+    } catch {
+      setMessage("No fue posible crear la cuenta. Revisa tu conexión e intenta nuevamente.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const result = await signIn("credentials", {
-      email: body.email,
-      password: body.password,
-      redirect: false,
-    });
-
-    // En un error inesperado de sesión, la cuenta ya existe y se puede usar desde la pantalla de acceso.
-    if (result?.error) {
-      window.location.assign("/ingresar");
-      return;
-    }
-
-    window.location.assign("/cuenta");
   }
 
   return (
@@ -113,7 +129,7 @@ export function RegistrationForm() {
       <label className="text-sm font-bold text-slate-700">Correo electrónico<input required name="email" type="email" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal" placeholder="nombre@correo.cl" /></label>
       <label className="text-sm font-bold text-slate-700">Teléfono<input name="phone" type="tel" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal" placeholder="+56 9..." /></label>
       <label className="text-sm font-bold text-slate-700">Contraseña<input required name="password" type="password" minLength={8} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal" placeholder="Mínimo 8 caracteres" /></label>
-      {message ? <p className="text-sm font-semibold text-red-700">{message}</p> : null}
+      {message ? <p role="alert" className="text-sm font-semibold text-red-700">{message}</p> : null}
       <button disabled={loading} className="mt-2 rounded-lg bg-teal-700 py-3 font-bold text-white disabled:opacity-60 hover:bg-teal-800">{loading ? "Creando cuenta..." : "Crear cuenta"}</button>
     </form>
   );
@@ -124,10 +140,10 @@ export function RegistrationForm() {
  * QUÉ HACE: Muestra el enlace opuesto según la página que lo utiliza.
  * PARA QUÉ SE UTILIZA: Ayuda a la persona a cambiar de flujo sin duplicar este texto en dos páginas.
  */
-export function AuthFooter({ register }: { register?: boolean }) {
+export function AuthFooter({ register, callbackUrl }: { register?: boolean; callbackUrl?: string }) {
   if (register) {
-    return <p className="mt-5 text-center text-sm text-slate-600">¿Ya tienes una cuenta? <Link className="font-bold text-teal-700 hover:underline" href="/ingresar">Ingresa</Link></p>;
+    return <p className="mt-5 text-center text-sm text-slate-600">¿Ya tienes una cuenta? <Link className="font-bold text-teal-700 hover:underline" href={`/ingresar?callbackUrl=${encodeURIComponent(safeCallbackUrl(callbackUrl))}`}>Inicia sesión</Link></p>;
   }
 
-  return <p className="mt-5 text-center text-sm text-slate-600">¿Aún no tienes cuenta? <Link className="font-bold text-teal-700 hover:underline" href="/registro">Crea tu cuenta</Link></p>;
+  return <p className="mt-5 text-center text-sm text-slate-600">¿Aún no tienes cuenta? <Link className="font-bold text-teal-700 hover:underline" href={`/registro?callbackUrl=${encodeURIComponent(safeCallbackUrl(callbackUrl))}`}>Crea tu cuenta</Link></p>;
 }

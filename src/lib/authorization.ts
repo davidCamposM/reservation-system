@@ -8,6 +8,15 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 
 /**
+ * DESCRIPCIÓN: Regla pura de autorización administrativa.
+ * QUÉ HACE: Devuelve true únicamente cuando el rol recibido es ADMIN.
+ * PARA QUÉ SE UTILIZA: La regla se reutiliza desde la sesión real y puede probarse sin iniciar NextAuth ni una base de datos.
+ */
+export function hasAdminRole(role: unknown) {
+  return role === "ADMIN";
+}
+
+/**
  * DESCRIPCIÓN: Comprobación de sesión administrativa.
  * QUÉ HACE: Devuelve la sesión si existe y el rol del usuario es ADMIN; en otro caso devuelve null.
  * PARA QUÉ SE UTILIZA: Las APIs pueden detener una acción sensible con una sola condición.
@@ -15,7 +24,7 @@ import { authOptions } from "@/lib/auth";
 export async function getAdminSession() {
   const session = await getServerSession(authOptions);
 
-  if (!session || session.user.role !== "ADMIN") return null;
+  if (!session || !hasAdminRole(session.user.role)) return null;
   return session;
 }
 

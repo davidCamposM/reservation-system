@@ -31,6 +31,21 @@ export function formatChileDate(date: Date) {
   return formatInTimeZone(date, BUSINESS_TIME_ZONE, "yyyy-MM-dd");
 }
 
+/** Verifica que YYYY-MM-DD represente un día real del calendario y no solo una cadena con apariencia válida. */
+export function isValidCalendarDate(date: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+}
+
 /** True when two half-open ranges [start, end) collide. */
 export function overlaps(startA: Date, endA: Date, startB: Date, endB: Date) {
   return startA < endB && endA > startB;

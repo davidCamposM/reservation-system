@@ -12,7 +12,7 @@ Antes de instalar el proyecto, la máquina debe contar con las siguientes herram
 
 | Herramienta | Versión recomendada | Propósito |
 |---|---:|---|
-| Node.js | 20 o superior | Ejecutar Next.js, npm y Prisma. |
+| Node.js | 24.x | Ejecutar Next.js, npm y Prisma. La versión se fija en `.nvmrc`. |
 | npm | Incluido con Node.js | Instalar dependencias y ejecutar scripts. |
 | Docker Desktop | Versión actual | Ejecutar PostgreSQL en un contenedor. |
 | Docker Compose | Versión 2 o superior | Levantar el servicio definido en `docker-compose.yml`. |
@@ -68,9 +68,12 @@ El archivo `.env` debe contener al menos estas variables para ejecutar el MVP ac
 
 ```env
 DATABASE_URL="postgresql://reservapro:reservapro@localhost:5433/reservapro?schema=public"
-NEXTAUTH_SECRET="replace-with-a-long-random-secret"
+DIRECT_URL="postgresql://reservapro:reservapro@localhost:5433/reservapro?schema=public"
+NEXTAUTH_SECRET="una-clave-local-aleatoria-de-al-menos-32-caracteres"
 NEXTAUTH_URL="http://localhost:3000"
-SEED_ADMIN_PASSWORD="Admin123!"
+SEED_ADMIN_EMAIL="admin@ejemplo.local"
+SEED_ADMIN_PASSWORD="una-clave-privada-de-12-caracteres"
+SEED_DEMO_DATA="false"
 ```
 
 | Variable | Propósito | Uso actual |
@@ -78,10 +81,13 @@ SEED_ADMIN_PASSWORD="Admin123!"
 | `DATABASE_URL` | Indica a Prisma cómo conectarse a PostgreSQL. | Obligatoria. |
 | `NEXTAUTH_SECRET` | Firma la información de sesión de NextAuth. | Obligatoria para autenticación local. |
 | `NEXTAUTH_URL` | Define la URL base de la aplicación. | Obligatoria para autenticación local. |
-| `SEED_ADMIN_PASSWORD` | Define la contraseña de la cuenta administrativa creada por el seed. | Recomendable. |
-| `RESEND_API_KEY` | Preparada para correo electrónico. | No utilizada todavía. |
-| `WEBPAY_COMMERCE_CODE` | Preparada para Webpay Plus. | No utilizada todavía. |
-| `WEBPAY_API_KEY` | Preparada para Webpay Plus. | No utilizada todavía. |
+| `DIRECT_URL` | Conexión directa que Prisma utiliza en migraciones. | Obligatoria en Vercel; en local puede coincidir con `DATABASE_URL`. |
+| `SEED_ADMIN_EMAIL` | Correo de la cuenta administrativa creada por el seed. | Obligatoria para ejecutar el seed. |
+| `SEED_ADMIN_PASSWORD` | Contraseña privada de la cuenta administrativa. | Obligatoria; debe tener al menos 12 caracteres. |
+| `SEED_DEMO_DATA` | Decide si se crean servicios y profesionales de ejemplo. | `false` por defecto. |
+| `RESEND_API_KEY` | Clave privada para confirmaciones y recordatorios. | Opcional en local; sin valor, los correos se encolan sin envío real. |
+| `WEBPAY_COMMERCE_CODE` | Código de comercio de Webpay Plus. | Opcional; vacío utiliza credenciales públicas de integración del SDK. |
+| `WEBPAY_API_KEY` | Clave API de Webpay Plus. | Opcional; vacío utiliza credenciales públicas de integración del SDK. |
 
 ## 6. Iniciar PostgreSQL con Docker
 
@@ -125,13 +131,13 @@ npm run db:generate
 
 Este comando genera el cliente que la aplicación utiliza para consultar y modificar PostgreSQL.
 
-### 7.2 Aplicar las migraciones
+### 7.2 Aplicar las migraciones existentes
 
 ```bash
-npm run db:migrate -- --name init
+npm run db:deploy
 ```
 
-El comando aplica las migraciones existentes dentro de `prisma/migrations/` y sincroniza la estructura de PostgreSQL con el modelo de Prisma.
+El comando aplica las migraciones existentes dentro de `prisma/migrations/` y sincroniza la estructura de PostgreSQL con el modelo de Prisma sin reiniciar la base. Para crear una migración nueva durante el desarrollo se puede utilizar `npm run db:migrate -- --name nombre`.
 
 
 ### 7.3 Cargar los datos semilla
@@ -140,7 +146,7 @@ El comando aplica las migraciones existentes dentro de `prisma/migrations/` y si
 npm run db:seed
 ```
 
-El seed crea o actualiza los datos de demostración necesarios para explorar el sistema:
+El seed crea o actualiza la cuenta administrativa definida en las variables privadas. Solo cuando `SEED_DEMO_DATA="true"` se crean además datos de demostración:
 
 - Cuenta administrativa.
 - Servicios iniciales.
@@ -173,7 +179,7 @@ http://localhost:3000
 
 | Campo | Valor de demostración |
 |---|---|
-| Correo | `admin@reservapro.local` |
-| Contraseña | `Admin123!` o el valor configurado en `SEED_ADMIN_PASSWORD` |
+| Correo | El valor privado configurado en `SEED_ADMIN_EMAIL` |
+| Contraseña | El valor privado configurado en `SEED_ADMIN_PASSWORD` |
 
-Para probar el flujo de cliente, se debe crear una cuenta nueva desde `/registro`.
+El seed no incluye credenciales predeterminadas públicas ni convierte una cuenta de cliente existente en administrador. Para probar el flujo de cliente, se debe crear una cuenta nueva desde `/registro`.

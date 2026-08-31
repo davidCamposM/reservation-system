@@ -1,5 +1,11 @@
 node_modules/
 .next/
+.next-check/
+.next-current-check/
+.test-artifacts/
+*.tsbuildinfo
+.vercel/
+.env.*.local
 .env
 .env.local
 coverage/
