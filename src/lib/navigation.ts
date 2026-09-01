@@ -1,9 +1,9 @@
 /** Historial permitido: nunca conserva tokens, callbacks ni direcciones externas. */
 export type NavigationRole = "ADMIN" | "CUSTOMER" | null;
-const PUBLIC_ROUTES = ["/", "/catalogo", "/ingresar", "/registro"];
+const PUBLIC_ROUTES = ["/", "/catalogo", "/ingresar", "/registro", "/recuperar-contrasena", "/restablecer-contrasena"];
 
 export function isSafeHistoryRoute(path: string, role: NavigationRole) {
-  if (PUBLIC_ROUTES.includes(path)) return !role || !["/ingresar", "/registro"].includes(path);
+  if (PUBLIC_ROUTES.includes(path)) return !role || !["/ingresar", "/registro", "/recuperar-contrasena", "/restablecer-contrasena"].includes(path);
   if (role === "ADMIN") return ["/admin", "/admin/agenda"].includes(path);
   return role === "CUSTOMER" && ["/cuenta", "/reservar"].includes(path);
 }

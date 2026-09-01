@@ -9,13 +9,14 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import { safeCallbackUrl } from "@/lib/auth-navigation";
+import { getResponseMessage } from "@/lib/http";
 
 /**
  * DESCRIPCIÓN: Formulario de acceso para una cuenta existente.
  * QUÉ HACE: Envía correo y contraseña al proveedor credentials de NextAuth.
  * PARA QUÉ SE UTILIZA: Crea una sesión y lleva al cliente a /cuenta cuando sus credenciales son correctas.
  */
-export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
+export function LoginForm({ callbackUrl, passwordReset }: { callbackUrl?: string; passwordReset?: boolean }) {
   // Este mensaje se muestra solo si NextAuth rechaza las credenciales.
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -54,10 +55,12 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
 
   return (
     <form className="mt-7 space-y-4" onSubmit={handleSubmit}>
+      {passwordReset ? <p role="status" className="rounded-lg bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800">La contraseña fue actualizada. Ya puedes iniciar sesión.</p> : null}
       <label className="block text-sm font-bold text-slate-700">
         Correo electrónico
         <input required name="email" type="email" placeholder="nombre@correo.cl" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
       </label>
+      <div className="flex justify-end"><Link href="/recuperar-contrasena" className="text-sm font-bold text-teal-700 hover:underline">¿Olvidaste tu contraseña?</Link></div>
       <label className="block text-sm font-bold text-slate-700">
         Contraseña
         <input required name="password" type="password" minLength={8} placeholder="••••••••" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
@@ -146,4 +149,64 @@ export function AuthFooter({ register, callbackUrl }: { register?: boolean; call
   }
 
   return <p className="mt-5 text-center text-sm text-slate-600">¿Aún no tienes cuenta? <Link className="font-bold text-teal-700 hover:underline" href={`/registro?callbackUrl=${encodeURIComponent(safeCallbackUrl(callbackUrl))}`}>Crea tu cuenta</Link></p>;
+}
+
+export function PasswordResetRequestForm() {
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setMessage("");
+    try {
+      const email = String(new FormData(event.currentTarget).get("email") ?? "");
+      const response = await fetch("/api/auth/password-reset/request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const payload = await response.json().catch(() => null);
+      setMessage(response.ok ? "Si existe una cuenta asociada, se enviará un enlace de recuperación a ese correo." : getResponseMessage(payload, "No fue posible procesar la solicitud. Intenta nuevamente."));
+    } catch {
+      setMessage("No fue posible procesar la solicitud. Intenta nuevamente.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return <form className="mt-7 space-y-4" onSubmit={handleSubmit}>
+    <label className="block text-sm font-bold text-slate-700">Correo electrónico<input required name="email" type="email" autoComplete="email" placeholder="nombre@correo.cl" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></label>
+    {message ? <p role="status" className="text-sm font-semibold text-slate-700">{message}</p> : null}
+    <button disabled={loading} className="w-full rounded-lg bg-slate-950 py-3 font-bold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Enviando..." : "Enviar enlace"}</button>
+  </form>;
+}
+
+export function NewPasswordForm({ token }: { token?: string }) {
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) { setMessage("El enlace de recuperación no es válido."); return; }
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("password") ?? "");
+    const confirmPassword = String(form.get("confirmPassword") ?? "");
+    if (password !== confirmPassword) { setMessage("Las contraseñas no coinciden."); return; }
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/password-reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password }) });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) { setMessage(getResponseMessage(payload, "No fue posible restablecer la contraseña.")); return; }
+      window.location.assign("/ingresar?passwordReset=1");
+    } catch {
+      setMessage("No fue posible restablecer la contraseña. Intenta nuevamente.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return <form className="mt-7 space-y-4" onSubmit={handleSubmit}>
+    <label className="block text-sm font-bold text-slate-700">Nueva contraseña<input required name="password" type="password" minLength={8} maxLength={72} autoComplete="new-password" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></label>
+    <label className="block text-sm font-bold text-slate-700">Repite la contraseña<input required name="confirmPassword" type="password" minLength={8} maxLength={72} autoComplete="new-password" className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" /></label>
+    {message ? <p role="alert" className="text-sm font-semibold text-red-700">{message}</p> : null}
+    <button disabled={loading || !token} className="w-full rounded-lg bg-slate-950 py-3 font-bold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Actualizando..." : "Guardar nueva contraseña"}</button>
+  </form>;
 }

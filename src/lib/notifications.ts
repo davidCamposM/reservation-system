@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { Resend, type CreateEmailOptions } from "resend";
 import { BUSINESS_TIME_ZONE } from "@/lib/scheduling";
+import { siteUrl } from "@/lib/environment";
 import { prisma } from "@/lib/prisma";
 import { reminderWindow, requiresReconciliation, retryAt } from "@/lib/notification-policy";
 
@@ -11,6 +12,21 @@ const include = { customer: true, professional: true, payment: true } as const;
 /** La instancia puede sustituirse en pruebas; en previews no se envían correos reales. */
 export function getResendClient() {
   return process.env.RESEND_API_KEY && process.env.VERCEL_ENV !== "preview" ? new Resend(process.env.RESEND_API_KEY) : null;
+}
+
+/** Envía un enlace de uso único. Un fallo no revela si el destinatario posee cuenta. */
+export async function sendPasswordResetEmail(email: string, token: string) {
+  const resend = getResendClient();
+  if (!resend) return { skipped: true };
+  const url = new URL("/restablecer-contrasena", siteUrl());
+  url.searchParams.set("token", token);
+  const response = await resend.emails.send({
+    from: process.env.RESEND_FROM_EMAIL || "ReservaPro <onboarding@resend.dev>",
+    to: [email],
+    subject: "Restablece tu contraseña | ReservaPro",
+    html: `<h1>Restablece tu contraseña</h1><p>Se solicitó cambiar la contraseña de tu cuenta de ReservaPro.</p><p><a href="${url.toString()}">Crear una nueva contraseña</a></p><p>Este enlace vence en 30 minutos y solo puede usarse una vez. Si no realizaste esta solicitud, puedes ignorar este correo.</p>`,
+  });
+  return { skipped: false, sent: Boolean(response.data?.id && !response.error) };
 }
 
 function escapeHtml(value: string) {

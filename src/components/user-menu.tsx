@@ -23,7 +23,10 @@ export function SignOutButton() {
     // callbackUrl indica a qué ruta debe volver el navegador después de cerrar la sesión.
     setIsSigningOut(true);
     try {
-      await signOut({ callbackUrl: "/" });
+      // La redirección final se controla en el navegador para conservar el mismo origen,
+      // incluso si un servidor local antiguo quedó iniciado con otra NEXTAUTH_URL.
+      await signOut({ redirect: false, callbackUrl: window.location.origin });
+      window.location.assign("/");
     } catch {
       // El botón vuelve a estar disponible si una interrupción de red impide cerrar la sesión.
       setIsSigningOut(false);
